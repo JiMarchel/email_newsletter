@@ -1,0 +1,19 @@
+[package]
+name = "email_newsletter"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+path = "src/main.rs"
+name = "email_newsletter"
+
+[dependencies]
+axum = "0.8.4"
+serde = { version = "1.0.219", features = ["derive"] }
+tokio = { version = "1.45.1", features = ["full"] }
+
+[dev-dependencies]
+reqwest = "0.12.19"
