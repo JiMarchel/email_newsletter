@@ -1,11 +1,23 @@
-use axum::{Router, extract::Path, http::StatusCode, response::IntoResponse, routing::get, serve};
+use axum::{
+    Form, Router,
+    http::StatusCode,
+    response::IntoResponse,
+    routing::{get, post},
+    serve,
+};
+use serde::Deserialize;
 use tokio::net::TcpListener;
+
+#[derive(Deserialize)]
+pub struct FormData {
+    email: String,
+    name: String,
+}
 
 pub fn app() -> Router {
     Router::new()
         .route("/health_check", get(health_check))
-        .route("/hello", get(greet))
-        .route("/hello/{name}", get(greet))
+        .route("/subscription", post(subscribe))
 }
 
 pub async fn run(listener: TcpListener) {
@@ -16,11 +28,6 @@ async fn health_check() -> impl IntoResponse {
     StatusCode::OK
 }
 
-async fn greet(name: Option<Path<String>>) -> String {
-    let name = match name {
-        Some(Path(name)) => name,
-        None => "World".to_string(),
-    };
-
-    format!("Hello {}!", name)
+async fn subscribe(_form: Form<FormData>) -> impl IntoResponse {
+    StatusCode::OK
 }
