@@ -17,7 +17,7 @@ pub struct FormData {
 pub fn app() -> Router {
     Router::new()
         .route("/health_check", get(health_check))
-        .route("/subscription", post(subscribe))
+        .route("/subscriptions", post(subscribe).get(subscribe))
 }
 
 pub async fn run(listener: TcpListener) {
