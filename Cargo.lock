@@ -427,7 +427,6 @@ dependencies = [
  "axum",
  "chrono",
  "config",
- "http",
  "reqwest",
  "serde",
  "sqlx",

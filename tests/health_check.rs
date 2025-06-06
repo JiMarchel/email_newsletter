@@ -1,7 +1,11 @@
-use email_newsletter::{configuration::get_configuration, startup::run};
+use email_newsletter::{
+    configuration::{DatabaseSettings, get_configuration},
+    startup::run,
+};
 use reqwest::header::CONTENT_TYPE;
-use sqlx::{Pool, Postgres, postgres::PgPoolOptions};
+use sqlx::{Connection, Executor, PgConnection, Pool, Postgres, postgres::PgPoolOptions};
 use tokio::net::TcpListener;
+use uuid::Uuid;
 
 pub struct TestApp {
     pub address: String,
@@ -14,19 +18,37 @@ async fn spawn_app() -> TestApp {
     let local_addr = listener.local_addr().unwrap();
     let addr = format!("http://{local_addr}");
 
-    let configuration = get_configuration().expect("Failed to read configuration");
-    let connection_pool = PgPoolOptions::new()
-        .max_connections(10)
-        .connect(&configuration.database.connection_string())
-        .await
-        .expect("Failed to connect to postgres");
-
+    let mut configuration = get_configuration().expect("Failed to read configuration");
+    configuration.database.database_name = Uuid::new_v4().to_string();
+    let connection_pool = configure_database(&configuration.database).await;
     let server = run(listener, connection_pool.clone());
     let _ = tokio::spawn(server);
     TestApp {
         address: addr,
         db: connection_pool,
     }
+}
+
+pub async fn configure_database(config: &DatabaseSettings) -> Pool<Postgres> {
+    let mut connection = PgConnection::connect(&config.connection_string_without_db())
+        .await
+        .expect("Failed to connect to postgres");
+    connection
+        .execute(format!(r#"CREATE DATABASE "{}";"#, config.database_name).as_str())
+        .await
+        .expect("Failed to create database");
+
+    //migrate db
+    let connection_pool = PgPoolOptions::new()
+        .max_connections(10)
+        .connect(&config.connection_string())
+        .await
+        .expect("Failed to connect postgres");
+    sqlx::migrate!("./migrations")
+        .run(&connection_pool)
+        .await
+        .expect("Failed to migrate database");
+    connection_pool
 }
 
 #[tokio::test]
@@ -87,7 +109,7 @@ async fn subscrice_return_a_422_when_data_is_missing() {
     for (invalid_body, error_message) in test_case {
         let response = cliet
             .post(&format!("{}/subscriptions", &app.address))
-            .header("Content-Type", "application/x-www-form-urlencoded")
+            .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
             .body(invalid_body)
             .send()
             .await
