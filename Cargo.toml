@@ -19,5 +19,6 @@ config = "0.15.11"
 chrono = "0.4.41"
 uuid = { version = "1.17.0", features = ["v4"] }
 reqwest = "0.12.19"
+env_logger = "0.11.8"
 
 [dev-dependencies]
