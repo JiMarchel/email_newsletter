@@ -8,7 +8,6 @@ use axum::{
 };
 use chrono::Utc;
 use serde::Deserialize;
-use tracing::Instrument;
 use uuid::Uuid;
 
 #[derive(Deserialize)]
@@ -16,36 +15,45 @@ pub struct FormData {
     pub email: String,
     pub name: String,
 }
+
+#[tracing::instrument(
+    name= "Adding a new subscriber",
+    skip(form, pool),
+    fields(
+        subscriber_email = %form.email,
+        subscriber_name = %form.name
+    )
+)]
 pub async fn subscribe(
-    State(db): State<Arc<ApplicationState>>,
+    State(pool): State<Arc<ApplicationState>>,
     Form(form): Form<FormData>,
 ) -> impl IntoResponse {
-    let request_id = Uuid::new_v4();
-    let request_span = tracing::info_span!(
-        "Adding a new subscriber",
-            %request_id,
-            subscriber_email = %form.email,
-            subscriber_name = %form.name
-    );
-    let _request_span_guard = request_span.enter();
+    match insert_subscriber(&pool, &form).await {
+        Ok(_) => StatusCode::OK,
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}
 
-    let query_span = tracing::info_span!("Saving new subscriber details in the database");
-
-    match sqlx::query(
+#[tracing::instrument(
+    name = "Saving new subscriber details in the database",
+    skip(form, pool)
+)]
+pub async fn insert_subscriber(
+    pool: &Arc<ApplicationState>,
+    form: &FormData,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
         "INSERT INTO subscriptions (id, email, name, subscribed_at) VALUES($1, $2, $3, $4);",
     )
     .bind(Uuid::new_v4())
-    .bind(form.email)
-    .bind(form.name)
+    .bind(&form.email)
+    .bind(&form.name)
     .bind(Utc::now())
-    .execute(&db.pool)
-    .instrument(query_span)
+    .execute(&pool.pool)
     .await
-    {
-        Ok(_) => StatusCode::OK,
-        Err(e) => {
-            tracing::error!("Failed to execute query {:?}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        }
-    }
+    .map_err(|e| {
+        tracing::error!("Failed to execute query: {:?}", e);
+        e
+    })?;
+    Ok(())
 }
