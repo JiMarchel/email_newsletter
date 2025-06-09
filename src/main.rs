@@ -5,6 +5,7 @@ use email_newsletter::{
 };
 use secrecy::ExposeSecret;
 use sqlx::postgres::PgPoolOptions;
+
 use tokio::net::TcpListener;
 
 #[tokio::main]
