@@ -10,6 +10,7 @@ use axum::{
 };
 use sqlx::{Pool, Postgres};
 use tokio::net::TcpListener;
+use tower::ServiceBuilder;
 use tower_http::trace::TraceLayer;
 use tower_request_id::{RequestId, RequestIdLayer};
 use tracing::info_span;
@@ -24,7 +25,7 @@ pub async fn run(listener: TcpListener, pool: Pool<Postgres>) {
         .route("/health_check", get(health_check))
         .route("/subscriptions", post(subscribe))
         .with_state(app_state)
-        .layer(
+        .layer(ServiceBuilder::new().layer(RequestIdLayer).layer(
             TraceLayer::new_for_http().make_span_with(|request: &Request<Body>| {
                 // We get the request id from the extensions
                 let request_id = request
@@ -40,8 +41,7 @@ pub async fn run(listener: TcpListener, pool: Pool<Postgres>) {
                     uri = %request.uri(),
                 )
             }),
-        )
-        .layer(RequestIdLayer);
+        ));
 
     serve(listener, app).await.unwrap();
 }

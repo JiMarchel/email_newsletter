@@ -16,8 +16,7 @@ async fn main() {
     let configuration = get_configuration().expect("Failed to read configuration!");
     let pool = PgPoolOptions::new()
         .max_connections(10)
-        .connect(&configuration.database.connection_string().expose_secret())
-        .await
+        .connect_lazy(configuration.database.connection_string().expose_secret())
         .expect("Failed to connect postgres");
 
     let addr = format!("127.0.0.1:{}", configuration.application_port);
