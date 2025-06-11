@@ -19,7 +19,10 @@ async fn main() {
         .connect_lazy(configuration.database.connection_string().expose_secret())
         .expect("Failed to connect postgres");
 
-    let addr = format!("127.0.0.1:{}", configuration.application_port);
+    let addr = format!(
+        "{}:{}",
+        configuration.application.host, configuration.application.port
+    );
     let listener = TcpListener::bind(addr).await.unwrap();
     run(listener, pool).await;
 }
