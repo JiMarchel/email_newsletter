@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    domain::{NewSubscriber, SubscriberName},
+    domain::{NewSubscriber, SubscriberEmail, SubscriberName},
     startup::ApplicationState,
 };
 use axum::{
@@ -19,6 +19,16 @@ pub struct FormData {
     pub name: String,
 }
 
+impl TryFrom<FormData> for NewSubscriber {
+    type Error = String;
+
+    fn try_from(value: FormData) -> Result<Self, Self::Error> {
+        let name = SubscriberName::parse(value.name)?;
+        let email = SubscriberEmail::parse(value.email)?;
+        Ok(Self { email, name })
+    }
+}
+
 #[tracing::instrument(
     name= "Adding a new subscriber",
     skip(form, pool),
@@ -31,14 +41,9 @@ pub async fn subscribe(
     State(pool): State<Arc<ApplicationState>>,
     Form(form): Form<FormData>,
 ) -> impl IntoResponse {
-    let name = match SubscriberName::parse(form.name) {
-        Ok(name) => name,
+    let new_subscriber = match form.try_into() {
+        Ok(form) => form,
         Err(_) => return StatusCode::BAD_REQUEST,
-    };
-
-    let new_subscriber = NewSubscriber {
-        email: form.email,
-        name,
     };
 
     match insert_subscriber(&pool, &new_subscriber).await {
@@ -59,7 +64,7 @@ pub async fn insert_subscriber(
         "INSERT INTO subscriptions (id, email, name, subscribed_at) VALUES($1, $2, $3, $4);",
     )
     .bind(Uuid::new_v4())
-    .bind(&new_subscriber.email)
+    .bind(new_subscriber.email.as_ref())
     .bind(new_subscriber.name.as_ref())
     .bind(Utc::now())
     .execute(&pool.pool)

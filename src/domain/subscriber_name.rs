@@ -1,9 +1,5 @@
 use unicode_segmentation::UnicodeSegmentation;
 
-pub struct NewSubscriber {
-    pub email: String,
-    pub name: SubscriberName,
-}
 pub struct SubscriberName(String);
 
 impl AsRef<str> for SubscriberName {
