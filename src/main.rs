@@ -3,7 +3,6 @@ use email_newsletter::{
     startup::run,
     telemetry::{get_subscriber, init_subscriber},
 };
-use secrecy::ExposeSecret;
 use sqlx::postgres::PgPoolOptions;
 
 use tokio::net::TcpListener;
@@ -16,8 +15,7 @@ async fn main() {
     let configuration = get_configuration().expect("Failed to read configuration!");
     let pool = PgPoolOptions::new()
         .max_connections(10)
-        .connect_lazy(configuration.database.connection_string().expose_secret())
-        .expect("Failed to connect postgres");
+        .connect_lazy_with(configuration.database.with_db());
 
     let addr = format!(
         "{}:{}",

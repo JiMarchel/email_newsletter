@@ -40,7 +40,7 @@ async fn spawn_app() -> TestApp {
     configuration.database.database_name = Uuid::new_v4().to_string();
     let connection_pool = configure_database(&configuration.database).await;
     let server = run(listener, connection_pool.clone());
-    let _ = tokio::spawn(server);
+    tokio::spawn(server);
     TestApp {
         address: addr,
         db: connection_pool,
@@ -48,7 +48,7 @@ async fn spawn_app() -> TestApp {
 }
 
 pub async fn configure_database(config: &DatabaseSettings) -> Pool<Postgres> {
-    let mut connection = PgConnection::connect(&config.connection_string_without_db())
+    let mut connection = PgConnection::connect_with(&config.without_db())
         .await
         .expect("Failed to connect to postgres");
     connection
@@ -59,7 +59,7 @@ pub async fn configure_database(config: &DatabaseSettings) -> Pool<Postgres> {
     //migrate db
     let connection_pool = PgPoolOptions::new()
         .max_connections(10)
-        .connect(&config.connection_string())
+        .connect_with(config.with_db())
         .await
         .expect("Failed to connect postgres");
     sqlx::migrate!("./migrations")
@@ -77,7 +77,7 @@ async fn health_check_works() {
     let client = reqwest::Client::new();
     //Act
     let response = client
-        .get(&format!("{}/health_check", &app.address))
+        .get(format!("{}/health_check", &app.address))
         .send()
         .await
         .expect("Failed to execute request");
@@ -95,7 +95,7 @@ async fn subscribing_return_a_200_for_valid_data_form() {
 
     let body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
     let response = client
-        .post(&format!("{}/subscriptions", &app.address))
+        .post(format!("{}/subscriptions", &app.address))
         .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
         .body(body)
         .send()
@@ -126,7 +126,7 @@ async fn subscrice_return_a_422_when_data_is_missing() {
 
     for (invalid_body, error_message) in test_case {
         let response = cliet
-            .post(&format!("{}/subscriptions", &app.address))
+            .post(format!("{}/subscriptions", &app.address))
             .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
             .body(invalid_body)
             .send()
@@ -138,6 +138,36 @@ async fn subscrice_return_a_422_when_data_is_missing() {
             response.status().as_u16(), // Axum defaults to 422 instead of 400
             "The API did not fail with 400 Bad Request when the payload was {}.",
             error_message
+        );
+    }
+}
+
+#[tokio::test]
+async fn subscribe_returns_a_400_when_fields_are_present_but_invalid() {
+    // Arrange
+    let app = spawn_app().await;
+    let client = reqwest::Client::new();
+    let test_cases = vec![
+        ("name=&email=ursula_le_guin%40gmail.com", "empty name"),
+        ("name=Ursula&email=", "empty email"),
+        ("name=Ursula&email=definitely-not-an-email", "invalid email"),
+    ];
+    for (body, description) in test_cases {
+        // Act
+        let response = client
+            .post(format!("{}/subscriptions", &app.address))
+            .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body(body)
+            .send()
+            .await
+            .expect("Failed to execute request.");
+        // Assert
+        println!("{}", response.status());
+        assert_eq!(
+            400,
+            response.status().as_u16(),
+            "The API did not return a 200 OK when the payload was {}.",
+            description
         );
     }
 }
