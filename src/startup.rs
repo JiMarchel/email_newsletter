@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use crate::routes::{health_check::health_check, subscriptions::subscribe};
+use crate::{
+    email_client::EmailClient,
+    routes::{health_check::health_check, subscriptions::subscribe},
+};
 use axum::{
     Router,
     body::Body,
@@ -19,12 +22,14 @@ pub struct ApplicationState {
     pub pool: Pool<Postgres>,
 }
 
-pub async fn run(listener: TcpListener, pool: Pool<Postgres>) {
+pub async fn run(listener: TcpListener, pool: Pool<Postgres>, email_client: EmailClient) {
     let app_state = Arc::new(ApplicationState { pool });
+    let email_client_state = Arc::new(email_client);
     let app = Router::new()
         .route("/health_check", get(health_check))
         .route("/subscriptions", post(subscribe))
         .with_state(app_state)
+        .with_state(email_client_state.clone())
         .layer(ServiceBuilder::new().layer(RequestIdLayer).layer(
             TraceLayer::new_for_http().make_span_with(|request: &Request<Body>| {
                 // We get the request id from the extensions

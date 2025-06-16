@@ -18,7 +18,7 @@ tokio = { version = "1.45.1", features = ["full"] }
 config = "0.15.11"
 chrono = "0.4.41"
 uuid = { version = "1.17.0", features = ["v4"] }
-reqwest = "0.12.19"
+reqwest = { version = "0.12.19", features = ["json", "rustls-tls"] }
 tower = "0.5.2"
 tower-http = { version = "0.6.6", features = ["trace"] }
 tracing = { version = "0.1.41", features = ["log"] }
@@ -37,3 +37,5 @@ fake = "4.3.0"
 quickcheck = "1.0.3"
 quickcheck_macros = "1.1.0"
 rand = "0.9.1"
+serde_json = "1.0.140"
+wiremock = "0.6.3"
