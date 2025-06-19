@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
+    configuration::{DatabaseSettings, Settings},
     email_client::EmailClient,
     routes::{health_check::health_check, subscriptions::subscribe},
 };
@@ -11,7 +12,7 @@ use axum::{
     routing::{get, post},
     serve,
 };
-use sqlx::{Pool, Postgres};
+use sqlx::{PgPool, Pool, Postgres, postgres::PgPoolOptions};
 use tokio::net::TcpListener;
 use tower::ServiceBuilder;
 use tower_http::trace::TraceLayer;
@@ -20,6 +21,53 @@ use tracing::info_span;
 
 pub struct ApplicationState {
     pub pool: Pool<Postgres>,
+}
+
+pub struct Application {
+    port: u16,
+    server: (),
+}
+
+impl Application {
+    pub async fn build(configuration: Settings) -> Result<Self, std::io::Error> {
+        let pool = get_connection_pool(&configuration.database);
+
+        let sender_email = configuration
+            .email_client
+            .sender()
+            .expect("Invalid sender email address");
+        let timeout = configuration.email_client.timeout();
+        let email_client = EmailClient::new(
+            configuration.email_client.base_url.clone(),
+            sender_email,
+            configuration.email_client.authorization_token.clone(),
+            timeout,
+        );
+
+        let addr = format!(
+            "{}:{}",
+            configuration.application.host, configuration.application.port
+        );
+        let listener = TcpListener::bind(addr).await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = run(listener, pool, email_client).await;
+
+        Ok(Self { port, server })
+    }
+
+    pub fn port(&self) -> u16 {
+        self.port
+    }
+
+    pub async fn run_until_stopped(self) {
+        self.server
+    }
+}
+
+pub fn get_connection_pool(configuration: &DatabaseSettings) -> PgPool {
+    PgPoolOptions::new()
+        .max_connections(10)
+        .connect_lazy_with(configuration.with_db())
 }
 
 pub async fn run(listener: TcpListener, pool: Pool<Postgres>, email_client: EmailClient) {
