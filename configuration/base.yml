@@ -12,3 +12,4 @@ email_client:
     # Use the single sender email you authorised on Postmark!
     sender_email: "dev@jimarchel.my.id"
     authorization_token: "my-secret-token"
+    timeout_milliseconds: 10000
