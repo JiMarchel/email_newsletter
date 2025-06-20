@@ -1,9 +1,11 @@
-use std::sync::Arc;
+use std::{pin::Pin, sync::Arc};
 
 use crate::{
     configuration::{DatabaseSettings, Settings},
     email_client::EmailClient,
-    routes::{health_check::health_check, subscriptions::subscribe},
+    routes::{
+        health_check::health_check, subscriptions::subscribe, subscriptions_confirm::confirm,
+    },
 };
 use axum::{
     Router,
@@ -19,13 +21,16 @@ use tower_http::trace::TraceLayer;
 use tower_request_id::{RequestId, RequestIdLayer};
 use tracing::info_span;
 
+pub struct ApplicationBaseUrl(pub String);
 pub struct ApplicationState {
     pub pool: Pool<Postgres>,
+    pub email_client: EmailClient,
+    pub base_url: ApplicationBaseUrl,
 }
 
 pub struct Application {
     port: u16,
-    server: (),
+    server: Pin<Box<dyn Future<Output = ()> + Send + 'static>>,
 }
 
 impl Application {
@@ -50,9 +55,17 @@ impl Application {
         );
         let listener = TcpListener::bind(addr).await.unwrap();
         let port = listener.local_addr().unwrap().port();
-        let server = run(listener, pool, email_client).await;
+        let server = run(
+            listener,
+            pool,
+            email_client,
+            configuration.application.base_url,
+        );
 
-        Ok(Self { port, server })
+        Ok(Self {
+            port,
+            server: Box::pin(server),
+        })
     }
 
     pub fn port(&self) -> u16 {
@@ -60,7 +73,7 @@ impl Application {
     }
 
     pub async fn run_until_stopped(self) {
-        self.server
+        self.server.await
     }
 }
 
@@ -70,14 +83,22 @@ pub fn get_connection_pool(configuration: &DatabaseSettings) -> PgPool {
         .connect_lazy_with(configuration.with_db())
 }
 
-pub async fn run(listener: TcpListener, pool: Pool<Postgres>, email_client: EmailClient) {
-    let app_state = Arc::new(ApplicationState { pool });
-    let email_client_state = Arc::new(email_client);
+pub async fn run(
+    listener: TcpListener,
+    pool: Pool<Postgres>,
+    email_client: EmailClient,
+    base_url: String,
+) {
+    let app_state = Arc::new(ApplicationState {
+        pool,
+        email_client,
+        base_url: ApplicationBaseUrl(base_url),
+    });
     let app = Router::new()
         .route("/health_check", get(health_check))
         .route("/subscriptions", post(subscribe))
+        .route("/subscriptions/confirm", get(confirm))
         .with_state(app_state)
-        .with_state(email_client_state.clone())
         .layer(ServiceBuilder::new().layer(RequestIdLayer).layer(
             TraceLayer::new_for_http().make_span_with(|request: &Request<Body>| {
                 // We get the request id from the extensions
