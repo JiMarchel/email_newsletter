@@ -7,6 +7,7 @@ use once_cell::sync::Lazy;
 use reqwest::header::CONTENT_TYPE;
 use sqlx::{Connection, Executor, PgConnection, Pool, Postgres, postgres::PgPoolOptions};
 use uuid::Uuid;
+use wiremock::MockServer;
 
 static TRACING: Lazy<()> = Lazy::new(|| {
     let default_filter_level = "info".to_string();
@@ -26,6 +27,8 @@ static TRACING: Lazy<()> = Lazy::new(|| {
 pub struct TestApp {
     pub address: String,
     pub db: Pool<Postgres>,
+    pub email_server: MockServer,
+    pub port: u16,
 }
 
 impl TestApp {
@@ -42,6 +45,7 @@ impl TestApp {
 
 pub async fn spawn_app() -> TestApp {
     Lazy::force(&TRACING);
+    let email_server = MockServer::start().await;
     // when you bind using port 0 it's will tell the os to find available port
     let configuration = {
         let mut c = get_configuration().expect("Failed to read configuration");
@@ -49,6 +53,7 @@ pub async fn spawn_app() -> TestApp {
         c.database.database_name = Uuid::new_v4().to_string();
         // Use a random OS port
         c.application.port = 0;
+        c.email_client.base_url = email_server.uri();
         c
     };
     configure_database(&configuration.database).await;
@@ -56,11 +61,14 @@ pub async fn spawn_app() -> TestApp {
     let application = Application::build(configuration.clone())
         .await
         .expect("Failed to build application");
+    let application_port = application.port();
     let address = format!("http://127.0.0.1:{}", application.port());
     tokio::spawn(application.run_until_stopped());
     TestApp {
         address,
         db: get_connection_pool(&configuration.database),
+        email_server,
+        port: application_port,
     }
 }
 
