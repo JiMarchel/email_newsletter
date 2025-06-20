@@ -31,14 +31,14 @@ impl TryFrom<FormData> for NewSubscriber {
 
 #[tracing::instrument(
     name= "Adding a new subscriber",
-    skip(form, pool),
+    skip(form, app_state),
     fields(
         subscriber_email = %form.email,
         subscriber_name = %form.name
     )
 )]
 pub async fn subscribe(
-    State(pool): State<Arc<ApplicationState>>,
+    State(app_state): State<Arc<ApplicationState>>,
     Form(form): Form<FormData>,
 ) -> impl IntoResponse {
     let new_subscriber = match form.try_into() {
@@ -46,10 +46,49 @@ pub async fn subscribe(
         Err(_) => return StatusCode::BAD_REQUEST,
     };
 
-    match insert_subscriber(&pool, &new_subscriber).await {
-        Ok(_) => StatusCode::OK,
-        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    if insert_subscriber(&app_state, &new_subscriber)
+        .await
+        .is_err()
+    {
+        return StatusCode::INTERNAL_SERVER_ERROR;
     }
+
+    if send_confirmation_email(&app_state, new_subscriber, &app_state.base_url.0)
+        .await
+        .is_err()
+    {
+        return StatusCode::INTERNAL_SERVER_ERROR;
+    }
+
+    StatusCode::OK
+}
+
+#[tracing::instrument(
+    name = "Send a confirmation email to a new subscriber",
+    skip(app_state, new_subscriber)
+)]
+pub async fn send_confirmation_email(
+    app_state: &Arc<ApplicationState>,
+    new_subscriber: NewSubscriber,
+    base_url: &str,
+) -> Result<(), reqwest::Error> {
+    let confirmation_link = format!("{}/subscriptions/confirm", base_url);
+
+    let plain_body = &format!(
+        "Welcome to our newsletter!<br />\
+        Click <a href=\"{}\">here</a> to confirm your subscription.",
+        confirmation_link
+    );
+
+    let html_body = &format!(
+        "Welcome to our newsletter!\nVisit {} to confirm your subscription.",
+        confirmation_link
+    );
+
+    app_state
+        .email_client
+        .send_email(new_subscriber.email, "Welcome", html_body, plain_body)
+        .await
 }
 
 #[tracing::instrument(
@@ -60,13 +99,13 @@ pub async fn insert_subscriber(
     pool: &Arc<ApplicationState>,
     new_subscriber: &NewSubscriber,
 ) -> Result<(), sqlx::Error> {
-    sqlx::query(
-        "INSERT INTO subscriptions (id, email, name, subscribed_at) VALUES($1, $2, $3, $4);",
+    sqlx::query!(
+        r#"INSERT INTO subscriptions (id, email, name, subscribed_at, status) VALUES($1, $2, $3, $4, 'pending_confirmation')"#,
+        Uuid::new_v4(),
+        new_subscriber.email.as_ref(),
+        new_subscriber.name.as_ref(),
+        Utc::now(),
     )
-    .bind(Uuid::new_v4())
-    .bind(new_subscriber.email.as_ref())
-    .bind(new_subscriber.name.as_ref())
-    .bind(Utc::now())
     .execute(&pool.pool)
     .await
     .map_err(|e| {
