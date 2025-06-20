@@ -19,7 +19,7 @@ pub struct EmailClientSettings {
     pub base_url: String,
     pub sender_email: String,
     pub authorization_token: SecretString,
-    pub timeout_miliseconds: u64,
+    pub timeout_milliseconds: u64,
 }
 
 impl EmailClientSettings {
@@ -28,7 +28,7 @@ impl EmailClientSettings {
     }
 
     pub fn timeout(&self) -> std::time::Duration {
-        std::time::Duration::from_millis(self.timeout_miliseconds)
+        std::time::Duration::from_millis(self.timeout_milliseconds)
     }
 }
 
@@ -37,6 +37,7 @@ pub struct ApplicationSettings {
     #[serde(deserialize_with = "deserialize_number_from_string")]
     pub port: u16,
     pub host: String,
+    pub base_url: String,
 }
 
 #[derive(Deserialize, Clone)]
