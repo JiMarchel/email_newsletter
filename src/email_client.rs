@@ -1,8 +1,7 @@
+use crate::domain::SubscriberEmail;
 use reqwest::Client;
 use secrecy::{ExposeSecret, SecretString};
 use serde::Serialize;
-
-use crate::domain::SubscriberEmail;
 
 #[derive(Clone)]
 pub struct EmailClient {
@@ -142,7 +141,7 @@ mod tests {
             .send_email(email(), &subject(), &content(), &content())
             .await;
         // Assert
-        assert_ok!(outcome);
+        assert_err!(outcome);
     }
 
     #[tokio::test]
